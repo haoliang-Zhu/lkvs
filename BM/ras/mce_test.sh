@@ -2,16 +2,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (c) 2024 Intel Corporation
 # Author: Yi Lai <yi1.lai@intel.com>
-# @Desc  Test script to verify Intel RAS functionality
-
-# Prerequisite
-if ! rpm -q screen &> /dev/null; then
-    echo "screen is not installed. Installing now..."
-    sudo yum install -y screen
-fi
+# @Desc  Test script to verify Intel RAS error injection functionality
 
 cd "$(dirname "$0")" 2>/dev/null || exit 1
 source ../.env
+source ./ras_common.sh
 
 usage() {
   cat <<__EOF
@@ -21,19 +16,28 @@ usage() {
 __EOF
 }
 
-ras_check_result() {
+mce_check_result() {
   local testcase=$1
 
-  if [ $? -eq 0 ]; then
+  if [ $2 -eq 0 ]; then
     test_print_trc "${testcase} Test PASS"
   else
     die "${testcase} Test FAIL"
   fi
 }
 
-ras_test() {
+load_edac_driver() {
+  for i in $(find /lib/modules/$(uname -r) -type f | grep edac); do
+    filename=${i##*/}
+    edac_driver=${filename%.ko.xz}
+    modprobe $edac_driver
+  done
+}
+
+mce_test() {
   case $TEST_SCENARIO in
   apei-inj)
+    load_edac_driver
     cd mce-test/cases/function/apei-inj/
     sh runtest.sh
     ;;
@@ -50,6 +54,7 @@ ras_test() {
     sh runtest.sh
     ;;
   einj-ext)
+    load_edac_driver
     cd mce-test/cases/function/einj-ext/
     sh runtest.sh
     ;;
@@ -66,7 +71,7 @@ ras_test() {
     sh runtest.sh
     ;;
   esac
-  ras_check_result $TEST_SCENARIO
+  mce_check_result $TEST_SCENARIO $?
 }
 
 while getopts :t:H arg; do
@@ -88,4 +93,5 @@ while getopts :t:H arg; do
   esac
 done
 
-ras_test
+pkg_check_install screen
+mce_test
